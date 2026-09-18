@@ -39,7 +39,6 @@ No screenshot assets or hosted demo are currently included in the repository.
 - Dataset preview and documented cleaning decisions.
 - Exploratory visualizations for outcome balance, age, glucose level, and correlations.
 - Step-by-step methodology covering loading, cleaning, transformation, splitting, scaling, and evaluation.
-- Dedicated model-report view for metrics, confusion matrices, and training-history outputs.
 - Interactive patient-parameter form prepared for neural-network inference.
 - Consistent teal visualization theme matching the original notebook analysis.
 - Cached dataset loading for a responsive Streamlit experience.
@@ -72,7 +71,7 @@ Brain_stroke_analysis/
 The current data flow is:
 
 ```text
-CSV dataset -> cached loading -> cleaning and exploratory views -> model report and prediction form
+CSV dataset -> cached loading -> cleaning and exploratory views -> prediction form
 ```
 
 The neural-network model file and preprocessing artifacts will be added to this structure after export from Colab.
@@ -136,7 +135,6 @@ Use the sidebar to move through the presentation:
 | Dataset | Shows sample records and cleaning decisions |
 | Exploration | Displays the main exploratory charts |
 | Method | Explains the analytical workflow |
-| Model report | Reserved for exported evaluation evidence |
 | Test the model | Collects patient parameters for future inference |
 
 ## Configuration

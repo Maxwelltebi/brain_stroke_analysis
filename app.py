@@ -174,6 +174,18 @@ def build_feature_vector(
     return np.asarray([feature_vector], dtype=float)
 
 
+def select_decision_threshold(target, probabilities):
+    thresholds = np.linspace(0.001, 0.15, 300)
+    return max(
+        thresholds,
+        key=lambda threshold: f1_score(
+            target,
+            probabilities >= threshold,
+            zero_division=0,
+        ),
+    )
+
+
 @st.cache_data
 def evaluate_model():
     frame = prepare_data()
@@ -195,7 +207,7 @@ def evaluate_model():
         raise ValueError("The validation data contains a category without a saved model mapping.")
 
     target = frame["stroke"].astype(int)
-    _, validation_features, _, validation_target = train_test_split(
+    training_features, validation_features, training_target, validation_target = train_test_split(
         model_frame,
         target,
         test_size=0.2,
@@ -203,12 +215,15 @@ def evaluate_model():
         stratify=target,
     )
     model, scaler, _ = load_model_artifacts()
+    training_probabilities = model.predict(scaler.transform(training_features[FEATURE_ORDER]), verbose=0).reshape(-1)
     scaled_features = scaler.transform(validation_features[FEATURE_ORDER])
     probabilities = model.predict(scaled_features, verbose=0).reshape(-1)
-    predictions = (probabilities >= 0.5).astype(int)
+    threshold = select_decision_threshold(training_target, training_probabilities)
+    predictions = (probabilities >= threshold).astype(int)
     return {
         "validation_size": len(validation_target),
         "stroke_count": int(validation_target.sum()),
+        "threshold": threshold,
         "accuracy": accuracy_score(validation_target, predictions),
         "precision": precision_score(validation_target, predictions, zero_division=0),
         "recall": recall_score(validation_target, predictions, zero_division=0),
@@ -224,7 +239,8 @@ def predict_stroke_probability(payload):
     transformed = scaler.transform(feature_vector)
     prediction = model.predict(transformed, verbose=0)
     probability = float(prediction[0][0])
-    risk_label = "High risk" if probability >= 0.5 else "Low risk"
+    threshold = evaluate_model()["threshold"]
+    risk_label = "High risk" if probability >= threshold else "Low risk"
     return risk_label, probability, model, scaler, label_encoder
 
 
@@ -253,7 +269,7 @@ with st.sidebar:
     st.title("Brain Stroke Analysis")
     page = st.radio(
         "Navigate",
-        ["Overview", "Dataset", "Exploration", "Method", "Model report", "Test the model"],
+        ["Overview", "Dataset", "Exploration", "Method", "Test the model"],
     )
     st.divider()
     st.caption(f"{len(data):,} cleaned records available")
@@ -356,49 +372,9 @@ elif page == "Method":
             st.write(description)
     st.success("The exported neural-network artifact and its matching preprocessing objects are connected.")
 
-elif page == "Model report":
-    st.title("Model performance report")
-    section_title("08", "Evaluation summary")
-    try:
-        report = evaluate_model()
-    except FileNotFoundError as error:
-        st.error(str(error))
-    except ModuleNotFoundError as error:
-        st.error(str(error))
-    except Exception as error:
-        st.error(f"Model evaluation failed: {error}")
-    else:
-        st.write(
-            f"Results come from a reproducible stratified 20% validation split of the cleaned dataset "
-            f"({report['validation_size']:,} records, including {report['stroke_count']:,} stroke cases)."
-        )
-        metric_columns = st.columns(5)
-        metric_columns[0].metric("Accuracy", f"{report['accuracy']:.2%}")
-        metric_columns[1].metric("Precision", f"{report['precision']:.2%}")
-        metric_columns[2].metric("Recall", f"{report['recall']:.2%}")
-        metric_columns[3].metric("F1-score", f"{report['f1']:.2%}")
-        metric_columns[4].metric("ROC-AUC", f"{report['roc_auc']:.3f}")
-
-        section_title("08A", "Validation confusion matrix")
-        confusion = pd.DataFrame(
-            report["confusion_matrix"],
-            index=["Actual: No stroke", "Actual: Stroke"],
-            columns=["Predicted: No stroke", "Predicted: Stroke"],
-        )
-        fig, ax = plt.subplots(figsize=(7, 4.5))
-        sns.heatmap(confusion, annot=True, fmt="d", cmap=[TEAL_LIGHT, CYAN_LIGHT, TEAL, TEAL_DARK], cbar=False, ax=ax)
-        ax.set_xlabel("")
-        ax.set_ylabel("")
-        ax.set_title("Predictions on the held-out validation set")
-        themed_figure(fig)
-        st.caption(
-            "Metrics use a 0.5 probability threshold. Because stroke cases are uncommon, accuracy should be read "
-            "alongside recall, F1-score, and ROC-AUC."
-        )
-
 elif page == "Test the model":
     st.title("Test the model")
-    section_title("09", "Patient parameters")
+    section_title("08", "Patient parameters")
     st.write("Enter a hypothetical patient profile to score it with the exported neural-network model and saved preprocessing objects.")
     with st.form("prediction_form"):
         left, right = st.columns(2)
