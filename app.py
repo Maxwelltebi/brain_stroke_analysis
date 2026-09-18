@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import streamlit as st
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.model_selection import train_test_split
 
 
 ROOT = Path(__file__).parent
@@ -28,6 +30,24 @@ FEATURE_ORDER = [
     "Heart Disease",
     "Average Glucose Level",
 ]
+MODEL_CATEGORY_MAPS = {
+    "Gender": {"Female": 0, "Male": 1},
+    "Marital Status": {"No": 1, "Yes": 0},
+    "Occupation Type": {
+        "children": 0,
+        "Govt_job": 1,
+        "Private": 2,
+        "Self-employed": 3,
+        "Never_worked": 4,
+    },
+    "Residence Type": {"Rural": 0, "Urban": 1},
+    "Smoking Status": {
+        "formerly smoked": 0,
+        "never smoked": 1,
+        "smokes": 2,
+        "Unknown": 3,
+    },
+}
 TEAL = "#00BFA5"
 TEAL_DARK = "#00796B"
 TEAL_LIGHT = "#E0F7FA"
@@ -134,26 +154,7 @@ def build_feature_vector(
     avg_glucose_level,
 ):
     category_maps = {
-        "Gender": {"Female": 0, "Male": 1},
-        "Marital Status": {"No": 0, "Yes": 1},
-        "Occupation Type": {
-            "children": 0,
-            "Govt_job": 1,
-            "Never_worked": 2,
-            "Private": 3,
-            "Self-employed": 4,
-            "Self Employed": 4,
-        },
-        "Residence Type": {"Rural": 0, "Urban": 1},
-        "Smoking Status": {
-            "Unknown": 0,
-            "formerly smoked": 1,
-            "never smoked": 2,
-            "smokes": 3,
-            "Formerly Smoked": 1,
-            "Never Smoked": 2,
-            "Smokes": 3,
-        },
+        **MODEL_CATEGORY_MAPS,
         "Hypertension": {"No": 0, "Yes": 1},
         "Heart Disease": {"No": 0, "Yes": 1},
     }
@@ -171,6 +172,50 @@ def build_feature_vector(
         float(avg_glucose_level),
     ]
     return np.asarray([feature_vector], dtype=float)
+
+
+@st.cache_data
+def evaluate_model():
+    frame = prepare_data()
+    model_frame = pd.DataFrame(
+        {
+            "Age": frame["age"].astype(float),
+            "Gender": frame["gender"].map(MODEL_CATEGORY_MAPS["Gender"]),
+            "Marital Status": frame["ever_married"].map(MODEL_CATEGORY_MAPS["Marital Status"]),
+            "BMI": frame["bmi"].astype(float),
+            "Occupation Type": frame["work_type"].map(MODEL_CATEGORY_MAPS["Occupation Type"]),
+            "Residence Type": frame["Residence_type"].map(MODEL_CATEGORY_MAPS["Residence Type"]),
+            "Smoking Status": frame["smoking_status"].map(MODEL_CATEGORY_MAPS["Smoking Status"]),
+            "Hypertension": frame["hypertension"].astype(float),
+            "Heart Disease": frame["heart_disease"].astype(float),
+            "Average Glucose Level": frame["avg_glucose_level"].astype(float),
+        }
+    )
+    if model_frame.isna().any().any():
+        raise ValueError("The validation data contains a category without a saved model mapping.")
+
+    target = frame["stroke"].astype(int)
+    _, validation_features, _, validation_target = train_test_split(
+        model_frame,
+        target,
+        test_size=0.2,
+        random_state=42,
+        stratify=target,
+    )
+    model, scaler, _ = load_model_artifacts()
+    scaled_features = scaler.transform(validation_features[FEATURE_ORDER])
+    probabilities = model.predict(scaled_features, verbose=0).reshape(-1)
+    predictions = (probabilities >= 0.5).astype(int)
+    return {
+        "validation_size": len(validation_target),
+        "stroke_count": int(validation_target.sum()),
+        "accuracy": accuracy_score(validation_target, predictions),
+        "precision": precision_score(validation_target, predictions, zero_division=0),
+        "recall": recall_score(validation_target, predictions, zero_division=0),
+        "f1": f1_score(validation_target, predictions, zero_division=0),
+        "roc_auc": roc_auc_score(validation_target, probabilities),
+        "confusion_matrix": confusion_matrix(validation_target, predictions),
+    }
 
 
 def predict_stroke_probability(payload):
@@ -309,17 +354,47 @@ elif page == "Method":
         with st.container(border=True):
             st.subheader(f"{number:02d} / {name}")
             st.write(description)
-    st.warning("The final neural-network artifact and its exact preprocessing objects will be connected after you export them from Colab.")
+    st.success("The exported neural-network artifact and its matching preprocessing objects are connected.")
 
 elif page == "Model report":
     st.title("Model performance report")
     section_title("08", "Evaluation summary")
-    st.write(
-        "This section is reserved for the exported neural-network results: accuracy, precision, recall, F1-score, "
-        "confusion matrix, and training-history plots."
-    )
-    st.info("Add the exported model report or training-history artifact to populate this section.")
-    st.code("model/brain_stroke_model.keras\nmodel/preprocessor.pkl\nreports/model_report.json", language="text")
+    try:
+        report = evaluate_model()
+    except FileNotFoundError as error:
+        st.error(str(error))
+    except ModuleNotFoundError as error:
+        st.error(str(error))
+    except Exception as error:
+        st.error(f"Model evaluation failed: {error}")
+    else:
+        st.write(
+            f"Results come from a reproducible stratified 20% validation split of the cleaned dataset "
+            f"({report['validation_size']:,} records, including {report['stroke_count']:,} stroke cases)."
+        )
+        metric_columns = st.columns(5)
+        metric_columns[0].metric("Accuracy", f"{report['accuracy']:.2%}")
+        metric_columns[1].metric("Precision", f"{report['precision']:.2%}")
+        metric_columns[2].metric("Recall", f"{report['recall']:.2%}")
+        metric_columns[3].metric("F1-score", f"{report['f1']:.2%}")
+        metric_columns[4].metric("ROC-AUC", f"{report['roc_auc']:.3f}")
+
+        section_title("08A", "Validation confusion matrix")
+        confusion = pd.DataFrame(
+            report["confusion_matrix"],
+            index=["Actual: No stroke", "Actual: Stroke"],
+            columns=["Predicted: No stroke", "Predicted: Stroke"],
+        )
+        fig, ax = plt.subplots(figsize=(7, 4.5))
+        sns.heatmap(confusion, annot=True, fmt="d", cmap=[TEAL_LIGHT, CYAN_LIGHT, TEAL, TEAL_DARK], cbar=False, ax=ax)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_title("Predictions on the held-out validation set")
+        themed_figure(fig)
+        st.caption(
+            "Metrics use a 0.5 probability threshold. Because stroke cases are uncommon, accuracy should be read "
+            "alongside recall, F1-score, and ROC-AUC."
+        )
 
 elif page == "Test the model":
     st.title("Test the model")
