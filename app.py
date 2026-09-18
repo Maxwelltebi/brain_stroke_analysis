@@ -9,7 +9,10 @@ import streamlit as st
 
 
 ROOT = Path(__file__).parent
-DATA_PATH = ROOT / "brain_stroke_dataset" / "healthcare-dataset-stroke-data.csv"
+DATA_PATHS = (
+    ROOT / "brain_stroke_dataset" / "healthcare-dataset-stroke-data.csv",
+    ROOT / "healthcare-dataset-stroke-data.csv",
+)
 MODEL_PATH = ROOT / "neural_network_model.keras"
 SCALER_PATH = ROOT / "standard_scaler.joblib"
 LABEL_ENCODER_PATH = ROOT / "label_encoder.joblib"
@@ -69,9 +72,11 @@ st.markdown(
 
 @st.cache_data
 def load_data():
-    if not DATA_PATH.exists():
-        raise FileNotFoundError(f"Dataset not found at {DATA_PATH}")
-    return pd.read_csv(DATA_PATH)
+    for data_path in DATA_PATHS:
+        if data_path.exists():
+            return pd.read_csv(data_path)
+    searched_paths = ", ".join(str(path) for path in DATA_PATHS)
+    raise FileNotFoundError(f"Dataset not found. Checked: {searched_paths}")
 
 
 @st.cache_data
