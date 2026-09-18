@@ -1,6 +1,8 @@
 from pathlib import Path
 
+import joblib
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import streamlit as st
@@ -8,6 +10,21 @@ import streamlit as st
 
 ROOT = Path(__file__).parent
 DATA_PATH = ROOT / "brain_stroke_dataset" / "healthcare-dataset-stroke-data.csv"
+MODEL_PATH = ROOT / "neural_network_model.keras"
+SCALER_PATH = ROOT / "standard_scaler.joblib"
+LABEL_ENCODER_PATH = ROOT / "label_encoder.joblib"
+FEATURE_ORDER = [
+    "Age",
+    "Gender",
+    "Marital Status",
+    "BMI",
+    "Occupation Type",
+    "Residence Type",
+    "Smoking Status",
+    "Hypertension",
+    "Heart Disease",
+    "Average Glucose Level",
+]
 TEAL = "#00BFA5"
 TEAL_DARK = "#00796B"
 TEAL_LIGHT = "#E0F7FA"
@@ -16,7 +33,7 @@ CYAN_LIGHT = "#B2EBF2"
 
 st.set_page_config(
     page_title="Brain Stroke Analysis",
-    page_icon=":drop_of_blood:",
+    page_icon="🩺",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -66,6 +83,101 @@ def prepare_data():
     return frame
 
 
+@st.cache_resource
+def load_model_artifacts():
+    missing = [str(path) for path in [MODEL_PATH, SCALER_PATH, LABEL_ENCODER_PATH] if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Missing exported model files. Expected: "
+            f"{MODEL_PATH.name}, {SCALER_PATH.name}, and {LABEL_ENCODER_PATH.name}."
+        )
+
+    try:
+        import tensorflow as tf
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "TensorFlow is required to load the exported Keras model. Install it in the project runtime before running predictions."
+        ) from exc
+
+    scaler = joblib.load(SCALER_PATH)
+    label_encoder = joblib.load(LABEL_ENCODER_PATH)
+    model = tf.keras.models.load_model(MODEL_PATH)
+    return model, scaler, label_encoder
+
+
+def map_category(value, mapping):
+    normalized = str(value).strip()
+    key = mapping.get(normalized)
+    if key is not None:
+        return key
+    for valid_value in mapping:
+        if normalized.lower() == valid_value.lower():
+            return mapping[valid_value]
+    raise ValueError(f"Unrecognized category '{value}' for mapping {list(mapping.keys())}")
+
+
+def build_feature_vector(
+    age,
+    gender,
+    marital_status,
+    bmi,
+    occupation_type,
+    residence_type,
+    smoking_status,
+    hypertension,
+    heart_disease,
+    avg_glucose_level,
+):
+    category_maps = {
+        "Gender": {"Female": 0, "Male": 1},
+        "Marital Status": {"No": 0, "Yes": 1},
+        "Occupation Type": {
+            "children": 0,
+            "Govt_job": 1,
+            "Never_worked": 2,
+            "Private": 3,
+            "Self-employed": 4,
+            "Self Employed": 4,
+        },
+        "Residence Type": {"Rural": 0, "Urban": 1},
+        "Smoking Status": {
+            "Unknown": 0,
+            "formerly smoked": 1,
+            "never smoked": 2,
+            "smokes": 3,
+            "Formerly Smoked": 1,
+            "Never Smoked": 2,
+            "Smokes": 3,
+        },
+        "Hypertension": {"No": 0, "Yes": 1},
+        "Heart Disease": {"No": 0, "Yes": 1},
+    }
+
+    feature_vector = [
+        float(age),
+        map_category(gender, category_maps["Gender"]),
+        map_category(marital_status, category_maps["Marital Status"]),
+        float(bmi),
+        map_category(occupation_type, category_maps["Occupation Type"]),
+        map_category(residence_type, category_maps["Residence Type"]),
+        map_category(smoking_status, category_maps["Smoking Status"]),
+        map_category(hypertension, category_maps["Hypertension"]),
+        map_category(heart_disease, category_maps["Heart Disease"]),
+        float(avg_glucose_level),
+    ]
+    return np.asarray([feature_vector], dtype=float)
+
+
+def predict_stroke_probability(payload):
+    model, scaler, label_encoder = load_model_artifacts()
+    feature_vector = build_feature_vector(**payload)
+    transformed = scaler.transform(feature_vector)
+    prediction = model.predict(transformed, verbose=0)
+    probability = float(prediction[0][0])
+    risk_label = "High risk" if probability >= 0.5 else "Low risk"
+    return risk_label, probability, model, scaler, label_encoder
+
+
 def section_title(number, title):
     st.markdown(f'<div class="section-title">{number}. {title}</div>', unsafe_allow_html=True)
 
@@ -74,7 +186,7 @@ def themed_figure(figure):
     figure.set_facecolor(TEAL_LIGHT)
     for axis in figure.axes:
         axis.set_facecolor(TEAL_LIGHT)
-    st.pyplot(figure, use_container_width=True)
+    st.pyplot(figure, width="stretch")
     plt.close(figure)
 
 
@@ -125,7 +237,7 @@ if page == "Overview":
 elif page == "Dataset":
     st.title("Dataset and preparation")
     section_title("02", "What the dataset contains")
-    st.dataframe(data.head(10), use_container_width=True, hide_index=True)
+    st.dataframe(data.head(10), width="stretch", hide_index=True)
     st.write(
         "The dataset includes demographic, lifestyle, clinical, and residential variables, with `stroke` as the target."
     )
@@ -141,7 +253,7 @@ elif page == "Dataset":
             ],
         }
     )
-    st.dataframe(decisions, use_container_width=True, hide_index=True)
+    st.dataframe(decisions, width="stretch", hide_index=True)
     st.write(f"Final analysis shape: **{data.shape[0]:,} rows x {data.shape[1]:,} columns**")
 
 elif page == "Exploration":
@@ -207,7 +319,7 @@ elif page == "Model report":
 elif page == "Test the model":
     st.title("Test the model")
     section_title("09", "Patient parameters")
-    st.write("Enter a hypothetical patient profile. The prediction button will be connected once the exported model is added.")
+    st.write("Enter a hypothetical patient profile to score it with the exported neural-network model and saved preprocessing objects.")
     with st.form("prediction_form"):
         left, right = st.columns(2)
         with left:
@@ -219,27 +331,46 @@ elif page == "Test the model":
         with right:
             hypertension = st.selectbox("Hypertension", ["No", "Yes"])
             heart_disease = st.selectbox("Heart disease", ["No", "Yes"])
-            married = st.selectbox("Ever married", ["No", "Yes"])
-            work_type = st.selectbox("Work type", ["Private", "Self-employed", "Govt_job", "children", "Never_worked"])
+            married = st.selectbox("Marital status", ["No", "Yes"])
+            work_type = st.selectbox("Occupation type", ["Private", "Self-employed", "Govt_job", "children", "Never_worked"])
             residence = st.selectbox("Residence type", ["Urban", "Rural"])
         submitted = st.form_submit_button("Run prediction", type="primary")
 
     if submitted:
-        st.info(
-            "The input form is ready. The neural-network model and matching preprocessing pipeline are not in the project folder yet, "
-            "so no clinical prediction has been generated."
-        )
-        st.json(
-            {
-                "age": age,
-                "bmi": bmi,
-                "average_glucose_level": glucose,
-                "gender": gender,
-                "smoking_status": smoking,
-                "hypertension": hypertension,
-                "heart_disease": heart_disease,
-                "ever_married": married,
-                "work_type": work_type,
-                "residence_type": residence,
-            }
-        )
+        try:
+            risk_label, probability, _, _, _ = predict_stroke_probability(
+                {
+                    "age": age,
+                    "gender": gender,
+                    "marital_status": married,
+                    "bmi": bmi,
+                    "occupation_type": work_type,
+                    "residence_type": residence,
+                    "smoking_status": smoking,
+                    "hypertension": hypertension,
+                    "heart_disease": heart_disease,
+                    "avg_glucose_level": glucose,
+                }
+            )
+            st.success(f"Prediction: {risk_label} ({probability:.2%} probability of stroke)")
+            st.json(
+                {
+                    "age": age,
+                    "gender": gender,
+                    "marital_status": married,
+                    "bmi": bmi,
+                    "occupation_type": work_type,
+                    "residence_type": residence,
+                    "smoking_status": smoking,
+                    "hypertension": hypertension,
+                    "heart_disease": heart_disease,
+                    "average_glucose_level": glucose,
+                    "feature_order": FEATURE_ORDER,
+                }
+            )
+        except FileNotFoundError as exc:
+            st.error(str(exc))
+        except ModuleNotFoundError as exc:
+            st.warning(str(exc))
+        except Exception as exc:
+            st.error(f"Prediction failed because the model inputs did not match the saved preprocessing pipeline: {exc}")
