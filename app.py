@@ -307,29 +307,16 @@ if page == "Overview":
         st.metric("Recorded strokes", f"{int(data['stroke'].sum()):,}")
 
     section_title("02", "What this project delivers")
-    impact_left, impact_right = st.columns(2)
-    with impact_left:
-        st.markdown(
-            """
-            **A transparent analytical journey**
+    st.markdown(
+        """
+        **A transparent analytical journey**
 
-            - Starts with the raw healthcare dataset instead of hiding the data preparation.
-            - Makes every cleaning decision visible and connected to the next stage.
-            - Uses exploratory charts to turn columns into interpretable patterns.
-            - Preserves the feature order and scaling required by the exported neural network.
-            """
-        )
-    with impact_right:
-        st.markdown(
-            """
-            **Why the result matters**
-
-            - The cleaned dataset retains **4,908** usable records for analysis.
-            - The target is rare: only **209** records contain a recorded stroke outcome.
-            - That imbalance makes accuracy alone an incomplete measure of model quality.
-            - The final step lets visitors test how a patient profile moves through the prediction workflow.
-            """
-        )
+        - Starts with the raw healthcare dataset instead of hiding the data preparation.
+        - Makes every cleaning decision visible and connected to the next stage.
+        - Uses exploratory charts to turn columns into interpretable patterns.
+        - Preserves the feature order and scaling required by the exported neural network.
+        """
+    )
 
     section_title("03", "The project in one sentence")
     st.info(
