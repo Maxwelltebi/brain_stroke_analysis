@@ -286,28 +286,66 @@ if page == "Overview":
         "This project is educational and analytical. It is not a medical diagnosis or a substitute for professional care."
     )
     section_title("01", "Why stroke analysis matters")
-    left, right = st.columns([1.25, 1])
+    left, right = st.columns([1.2, 1])
     with left:
         st.write(
-            "A stroke occurs when blood flow to part of the brain is interrupted or when a blood vessel ruptures. "
-            "The project studies patient characteristics associated with recorded stroke outcomes."
+            "Stroke is a high-impact health event, and earlier risk awareness can support better conversations about prevention and care. "
+            "This project examines which patient characteristics are associated with recorded stroke outcomes in the dataset."
         )
-        st.write(
-            "The presentation moves from raw data to a model-ready dataset, then ends with an interactive prediction workflow."
+        st.markdown(
+            """
+            **The central questions**
+
+            - What does the patient data contain, and how reliable is it after cleaning?
+            - Which demographic, lifestyle, and clinical variables appear alongside stroke records?
+            - Can the same preparation pipeline turn a patient profile into a consistent model input?
+            """
         )
     with right:
         st.metric("Original records", f"{len(raw_data):,}")
         st.metric("Cleaned records", f"{len(data):,}")
         st.metric("Recorded strokes", f"{int(data['stroke'].sum()):,}")
 
+    section_title("02", "What this project delivers")
+    impact_left, impact_right = st.columns(2)
+    with impact_left:
+        st.markdown(
+            """
+            **A transparent analytical journey**
+
+            - Starts with the raw healthcare dataset instead of hiding the data preparation.
+            - Makes every cleaning decision visible and connected to the next stage.
+            - Uses exploratory charts to turn columns into interpretable patterns.
+            - Preserves the feature order and scaling required by the exported neural network.
+            """
+        )
+    with impact_right:
+        st.markdown(
+            """
+            **Why the result matters**
+
+            - The cleaned dataset retains **4,908** usable records for analysis.
+            - The target is rare: only **209** records contain a recorded stroke outcome.
+            - That imbalance makes accuracy alone an incomplete measure of model quality.
+            - The final step lets visitors test how a patient profile moves through the prediction workflow.
+            """
+        )
+
+    section_title("03", "The project in one sentence")
+    st.info(
+        "This is a portfolio-grade demonstration of the full data-science lifecycle: "
+        "inspect the evidence, make defensible preparation decisions, communicate the findings, "
+        "and connect the result to an interactive model experience."
+    )
+
 elif page == "Dataset":
     st.title("Dataset and preparation")
-    section_title("02", "What the dataset contains")
+    section_title("04", "What the dataset contains")
     st.dataframe(data.head(10), width="stretch", hide_index=True)
     st.write(
         "The dataset includes demographic, lifestyle, clinical, and residential variables, with `stroke` as the target."
     )
-    section_title("03", "Cleaning decisions")
+    section_title("05", "Cleaning decisions")
     decisions = pd.DataFrame(
         {
             "Step": ["Remove duplicates", "Handle BMI missing values", "Remove ambiguous gender category", "Create readable labels"],
@@ -324,7 +362,7 @@ elif page == "Dataset":
 
 elif page == "Exploration":
     st.title("Exploratory analysis")
-    section_title("04", "Stroke outcome balance")
+    section_title("06", "Stroke outcome balance")
     outcome = data["stroke_label"].value_counts().rename_axis("Outcome").reset_index(name="Patients")
     fig, ax = plt.subplots(figsize=(8, 4))
     sns.barplot(data=outcome, x="Outcome", y="Patients", palette=[TEAL, TEAL_DARK], ax=ax)
@@ -333,7 +371,7 @@ elif page == "Exploration":
     ax.set_title("Recorded stroke outcomes")
     themed_figure(fig)
 
-    section_title("05", "Clinical and demographic patterns")
+    section_title("07", "Clinical and demographic patterns")
     col1, col2 = st.columns(2)
     with col1:
         fig, ax = plt.subplots(figsize=(8, 4))
@@ -348,7 +386,7 @@ elif page == "Exploration":
         ax.set_title("Glucose level by outcome")
         themed_figure(fig)
 
-    section_title("06", "Correlation map")
+    section_title("08", "Correlation map")
     numeric = data.select_dtypes(include="number").drop(columns=["id"], errors="ignore")
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.heatmap(numeric.corr(), cmap=[TEAL_LIGHT, CYAN_LIGHT, TEAL, TEAL_DARK], annot=True, fmt=".2f", ax=ax)
@@ -357,7 +395,7 @@ elif page == "Exploration":
 
 elif page == "Method":
     st.title("Methodical workflow")
-    section_title("07", "From raw data to model input")
+    section_title("09", "From raw data to model input")
     steps = [
         ("Load", "Read the healthcare stroke dataset into a pandas DataFrame."),
         ("Clean", "Remove duplicates, handle missing BMI values, and remove the ambiguous gender category."),
@@ -374,7 +412,7 @@ elif page == "Method":
 
 elif page == "Test the model":
     st.title("Test the model")
-    section_title("08", "Patient parameters")
+    section_title("10", "Patient parameters")
     st.write("Enter a hypothetical patient profile to score it with the exported neural-network model and saved preprocessing objects.")
     with st.form("prediction_form"):
         left, right = st.columns(2)
